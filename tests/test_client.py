@@ -3,7 +3,7 @@ import json
 import httpx
 import pytest
 
-from client import AgriVibeClient, BackendUnavailable, ConversationNotFound
+from api.client import AgriVibeClient, BackendUnavailable, ConversationNotFound
 
 TURN = {
     "message": "Is my Minneriya field stressed?",

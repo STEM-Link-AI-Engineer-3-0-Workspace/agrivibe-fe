@@ -3,5 +3,3 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 .env
-# Gradio generates these beside custom components, for editor hints on their events
-*.pyi

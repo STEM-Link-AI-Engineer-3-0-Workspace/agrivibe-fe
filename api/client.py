@@ -1,78 +1,20 @@
-"""The AgriVibe backend as the UI sees it: its HTTP calls and the shapes they return.
-
-The UI never imports the backend's code. The models below copy only the parts of the backend's
-contract (src/agrivibe/models/ in agrivibe-be) that the UI reads. A field the backend adds
-later is ignored, so a backend change does not break the page.
+"""The HTTP calls to the AgriVibe backend, with every failure turned into one readable error.
 
 The UI never tells the backend who the farmer is: the backend decides that on the server.
 """
 
-from datetime import datetime
 from typing import Any
 
 import httpx
-from pydantic import BaseModel, TypeAdapter, ValidationError
+from pydantic import TypeAdapter, ValidationError
 
-# A multi-agent turn usually takes 15 to 45 seconds, but a decision question whose knowledge
-# agent runs many searches has taken two minutes. A timeout looks like a broken app.
+import settings
+from api.models import ChatReply, Thread, ThreadSummary
+
+# A multi-agent turn usually takes 15 to 45 seconds, but a decision question has taken two minutes.
 TIMEOUT_SECONDS = 180.0
 
 UNREADABLE = "AgriVibe sent a reply the app could not read."
-
-
-class Source(BaseModel):
-    """A passage the knowledge agent cites."""
-
-    id: str
-    source: str
-    page: int
-    text: str
-    rerank_score: float | None = None
-
-
-class Finding(BaseModel):
-    """What one specialist reported for a message."""
-
-    summary: str
-    data: dict[str, Any]
-    sources: list[Source] = []
-
-    @property
-    def ok(self) -> bool:
-        """False when the specialist or its tool failed: the backend then sends empty data."""
-        return bool(self.data)
-
-
-class Turn(BaseModel):
-    """One message from the farmer and everything AgriVibe did to answer it."""
-
-    message: str
-    answer: str
-    tools_called: list[str]
-    requirements: dict[str, str] | None = None
-    findings: dict[str, Finding] = {}
-    seconds: float = 0.0
-
-
-class ChatReply(Turn):
-    """POST /chat's response: the turn, and the conversation it belongs to."""
-
-    thread_id: str
-
-
-class ThreadSummary(BaseModel):
-    """One of the farmer's conversations, as the list shows it."""
-
-    thread_id: str
-    title: str
-    updated_at: datetime
-    turns: int
-
-
-class Thread(ThreadSummary):
-    """A whole conversation, oldest turn first."""
-
-    history: list[Turn]
 
 
 class BackendUnavailable(Exception):
@@ -159,3 +101,8 @@ def read(shape: Any, data: Any) -> Any:
         return TypeAdapter(shape).validate_python(data)
     except ValidationError as error:
         raise BackendUnavailable(UNREADABLE) from error
+
+
+# The one client the page uses. Handlers look it up as `client.agrivibe` when they run, so tests
+# can swap it for a fake.
+agrivibe = AgriVibeClient(settings.API, timeout=settings.TIMEOUT)

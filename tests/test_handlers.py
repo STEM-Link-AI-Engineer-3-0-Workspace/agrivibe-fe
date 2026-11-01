@@ -2,7 +2,10 @@ import gradio as gr
 import pytest
 
 import app
-from client import BackendUnavailable, ChatReply, ConversationNotFound, Finding, Source, Thread, ThreadSummary, Turn
+from api import client
+from api.client import BackendUnavailable, ConversationNotFound
+from api.models import ChatReply, Finding, Source, Thread, ThreadSummary, Turn
+from handlers import chat, conversations
 
 UPDATED = "2026-11-01T10:00:24Z"
 
@@ -58,78 +61,80 @@ FOLLOW_UP = Turn(message="Thanks", answer="You're welcome.", tools_called=[], se
 THREAD = Thread(**SUMMARY.model_dump(), history=[TURN, FOLLOW_UP])
 
 
-def event(**data):
-    """What a component's data-event click sends: its data-* attributes."""
-    return gr.EventData(None, data)
+def text(messages):
+    """All the text in a list of chat messages, titles included, for simple `in` checks."""
+    return "\n".join(m["content"] + " " + " ".join(str(v) for v in m.get("metadata", {}).values()) for m in messages)
 
 
 @pytest.fixture
 def fake(monkeypatch):
     def use(**kwargs):
-        client = FakeClient(**kwargs)
-        monkeypatch.setattr(app, "client", client)
-        return client
+        fake_client = FakeClient(**kwargs)
+        monkeypatch.setattr(client, "agrivibe", fake_client)  # handlers look it up when they run
+        return fake_client
     return use
 
 
-def test_asking_shows_the_question_and_a_thinking_message_at_once():
-    page, question = app.ask([], event(text="  Should I spray?  "))
+def test_asking_shows_the_question_and_a_pending_thought_at_once():
+    box, messages, question = chat.ask("  Should I spray?  ", [])
 
-    assert question == "Should I spray?"
-    assert '<div class="bubble">Should I spray?</div>' in page
-    assert "data-pending" in page and "Asking the agents" in page
+    assert box == "" and question == "Should I spray?"
+    assert messages[0] == {"role": "user", "content": "Should I spray?"}
+    assert messages[1]["metadata"]["status"] == "pending"
 
 
 def test_an_empty_question_is_refused():
     with pytest.raises(gr.Error):
-        app.ask([], event(text="   "))
+        chat.ask("   ", [])
 
 
-def test_answer_fills_the_page_the_header_and_the_sidebar(fake, caplog):
+def test_a_suggestion_is_asked_as_if_typed():
+    _, messages, question = chat.suggest([], gr.SelectData(None, {"index": 0, "value": {"text": "Is it raining?"}}))
+    assert question == "Is it raining?" and messages[0]["content"] == "Is it raining?"
+
+
+def test_answer_fills_the_chat_the_header_and_the_sidebar(fake, caplog):
     client = fake(reply=REPLY, threads=[SUMMARY])
 
-    page, thread_id, turns, header, history = app.answer("Should I spray?", None, [])
+    messages, thread_id, turns, header, threads = chat.answer("Should I spray?", None, [])
 
     assert client.calls == [("chat", "Should I spray?", None)]  # no farmer id is ever sent
     assert thread_id == "thread-1" and turns == [REPLY]
-    assert "data-pending" not in page and "Heavy rain is expected." in page
-    # The trace: every tool in order, the failed specialist flagged without opening it.
-    assert page.index("Looked up your registered fields") < page.index("Weather agent") < page.index("Advisory agent")
-    assert "Worked with 4 agents" in page and "· 45s" in page and "No data from Farm context" in page
-    # The answer's citation became a numbered chip that matches the sources list.
-    assert '<span class="citation" title="CG-06.pdf · p. 3">1</span>' in page and "[cg-06" not in page
-    assert "Used 1 source" in page and "0.99" in page
+    assert messages[0] == {"role": "user", "content": "Should I spray?"}
+    assert any(m["content"] == "Wait. Heavy rain is expected. [1]" for m in messages)  # the citation became [1]
+    assert "Used 1 source" in text(messages)
     assert "Should I spray?" in header and "SL-PADDY-SAT-FAIL" in header
-    assert 'data-active' in history and "Should I spray?" in history
+    assert threads.value == "thread-1" and threads.choices[0] == ("Should I spray?", "thread-1")
     assert '"farmer_id": "frm_7f3a9c2e"' in caplog.text
     assert '"specialists": {"weather": "ok", "farm_context": "no_data", "knowledge": "ok"}' in caplog.text
 
 
-def test_a_backend_failure_is_shown_in_the_conversation_not_a_crash(fake):
+def test_a_backend_failure_is_shown_in_the_chat_not_a_crash(fake):
     fake(error=BackendUnavailable("AgriVibe took too long to answer."))
 
-    page, thread_id, turns, *_ = app.answer("Should I spray again?", "thread-1", [TURN])
+    messages, thread_id, turns, *_ = chat.answer("Should I spray again?", "thread-1", [TURN])
 
-    assert "No answer this time" in page and "took too long" in page
-    assert "Should I spray again?" in page and "Heavy rain is expected." in page  # earlier turns stay
+    assert "took too long" in messages[-1]["content"] and messages[-2]["content"] == "Should I spray again?"
+    assert messages[0]["content"] == "Should I spray?"  # earlier turns stay
     assert thread_id == "thread-1" and turns == [TURN]  # the conversation is kept, so the farmer can try again
 
 
 def test_a_deleted_conversation_starts_fresh(fake):
     fake(error=ConversationNotFound("That conversation no longer exists. Start a new one."))
 
-    page, thread_id, turns, *_ = app.answer("Hi", "deleted-thread", [TURN])
+    messages, thread_id, turns, *_ = chat.answer("Hi", "deleted-thread", [TURN])
 
-    assert "no longer exists" in page
+    assert "no longer exists" in messages[-1]["content"]
     assert thread_id is None and turns == []
 
 
 def test_opening_a_conversation_restores_it(fake):
     fake(thread=THREAD, threads=[SUMMARY])
 
-    page, thread_id, turns, header, _ = app.open_thread(event(id="thread-1"))
+    messages, thread_id, turns, header, _ = conversations.open_thread("thread-1")
 
-    assert page.count('data-role="user"') == 2 and "You're welcome." in page
+    assert [m["content"] for m in messages if m["role"] == "user"] == ["Should I spray?", "Thanks"]
+    assert messages[-1]["content"] == "You're welcome."
     assert thread_id == "thread-1" and turns == [TURN, FOLLOW_UP]
     assert "SL-PADDY-SAT-FAIL" in header  # the last field saved, even though the last turn saved none
 
@@ -137,43 +142,44 @@ def test_opening_a_conversation_restores_it(fake):
 def test_a_refresh_reopens_the_saved_conversation(fake):
     fake(thread=THREAD, threads=[SUMMARY])
 
-    alert, _, thread_id, turns, header, _ = app.on_load("thread-1")
+    alert, _, thread_id, turns, header, threads = conversations.on_load("thread-1")
 
     assert alert.visible is False and thread_id == "thread-1" and len(turns) == 2
-    assert "Online" in header
+    assert "Backend online" in header and threads.value == "thread-1"
 
 
 def test_a_saved_conversation_that_is_gone_starts_fresh(fake):
     fake(thread=None, threads=[])
 
-    _, page, thread_id, turns, *_ = app.on_load("deleted-thread")
+    _, messages, thread_id, turns, *_ = conversations.on_load("deleted-thread")
 
-    assert page == app.EMPTY_STATE and thread_id is None and turns == []
+    assert messages == [] and thread_id is None and turns == []
 
 
 def test_an_offline_backend_shows_the_alert_and_keeps_the_saved_conversation(fake):
     fake(error=BackendUnavailable("down"))
 
-    alert, _, thread_id, _, header, _ = app.on_load("thread-1")
+    alert, _, thread_id, _, header, _ = conversations.on_load("thread-1")
 
-    assert alert.visible is True and "Offline" in header
+    assert alert.visible is True and "Backend offline" in header
     assert thread_id is not None  # gr.skip(): the browser keeps its saved thread for the next reload
 
 
-def test_deleting_the_open_conversation_starts_fresh(fake):
+def test_deleting_clears_the_conversation(fake):
     client = fake(threads=[])
 
-    page, thread_id, turns, *_ = app.delete_thread("thread-1", event(id="thread-1"))
+    messages, thread_id, turns, *_ = conversations.delete_thread("thread-1")
 
     assert ("delete_thread", "thread-1") in client.calls
-    assert page == app.EMPTY_STATE and thread_id is None and turns == []
+    assert messages == [] and thread_id is None and turns == []
 
 
-def test_deleting_another_conversation_keeps_the_open_one(fake):
-    client = fake(threads=[SUMMARY])
+def test_cancelling_the_delete_does_nothing(fake):
+    client = fake()
+    conversations.delete_thread(None)  # the browser's confirm returned null
+    assert client.calls == []
 
-    page, *_, history = app.delete_thread("thread-1", event(id="thread-2"))
 
-    assert ("delete_thread", "thread-2") in client.calls
-    assert "data-active" in history  # thread-1 is still open and highlighted
-    assert page.__class__ is not str  # gr.skip(): the open conversation is left alone
+def test_the_chat_sanitises_html_from_the_backend():
+    # The presenters emit Markdown only and rely on this for agent and document text.
+    assert app.chat.sanitize_html is True

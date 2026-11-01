@@ -60,23 +60,22 @@ save. Both commands apply the same theme.
 
 ## What the page does
 
-The layout follows shadcn/ui's AI chat template ([vercel/ai-chatbot](https://github.com/vercel/ai-chatbot)):
-a sidebar, a centred conversation, and a message box docked at the bottom.
+Everything on the page is a stock Gradio component, themed. There is no custom HTML or JavaScript.
 
-- **Conversations in the sidebar**, grouped by day. Every conversation is saved by the backend in
-  Postgres; click one to reopen it. Hover one for its delete button, which asks to confirm first.
+- **Conversations in the sidebar** (`gr.Sidebar`, `gr.Radio`). Every conversation is saved by the
+  backend in Postgres; click one to reopen it. **Delete conversation** asks to confirm first.
 - **A refresh keeps your place.** The open conversation's id is kept in the browser
   (`gr.BrowserState`), so reloading the page reopens it.
-- **Each answer carries its own evidence**, in the message, as modern chat apps do:
-  - *Worked with 4 agents · 45s* opens into the chain of steps the orchestrator took: the fields it
-    looked up, what it saved to memory, and each specialist with its status, summary and numbers.
-    A specialist that failed is flagged on the closed line too (*No data from Farm context*).
-  - Citations in the answer become small numbered chips. *Used 3 sources* lists the cited
-    passages with their page, rerank score and a quote.
-  - A copy button copies the answer without its citation ids.
-- **A thinking message** shows while the agents work, and the send button rests until the answer is in.
-- **Suggestions** on the empty page send a question straight away, including the demo fields that
-  fail on purpose. The header shows the field in memory and whether the backend is online.
+- **Each answer carries its own evidence**, as collapsible "thoughts" in the `gr.Chatbot`
+  (a message with `metadata`):
+  - *Worked with 4 agents (45s)* opens into one nested thought per step the orchestrator took:
+    the fields it looked up, what it saved to memory, and each specialist with its summary and
+    numbers. A specialist that failed is named next to the title: *No data from Farm context*.
+  - *Used 3 sources* lists the cited passages with their page, rerank score and a quote.
+    Citations in the answer become `[1]`, `[2]`, matching that list.
+- **While the agents work**, a pending thought with a spinner shows in the chat.
+- **Suggestions** (`gr.Chatbot(examples=...)`) on the empty chat send a question straight away,
+  including the demo fields that fail on purpose.
 - **Light and dark mode** follow the system.
 
 The terminal gets one JSON line per turn:
@@ -87,59 +86,55 @@ INFO:     agrivibe.ui: {"event": "chat_turn", "farmer_id": "frm_7f3a9c2e", "thre
 
 ## How the code is laid out
 
+The code is grouped by job, the way Gradio works: events run handlers, handlers ask the API, and
+presenters turn the answer into what each component shows.
+
 ```
 agrivibe-fe/
-├── client.py         the backend as the UI sees it: the HTTP calls, the models they return, and
-│                     every failure turned into one message a farmer can read
-├── view.py           replies → markup: messages, the agent trace, sources, the history list.
-│                     Plain functions, no Gradio. Every piece of backend text is escaped
-├── app.py            the Gradio page: layout, events, state
-├── ui/               the design system, reusable beyond AgriVibe
-│   ├── theme.py      Gradio theme + shadcn tokens + primitive and shell CSS
-│   ├── primitives.py shadcn primitives as HTML: button, badge, avatar, collapsible, alert
-│   ├── components.py Gradio components built on gr.HTML: Button, Conversation, Composer, ThreadList
-│   └── icons.py      Lucide icons, the set shadcn uses
-└── tests/            run with no backend and no keys
+├── app.py                  the page: layout, and which handler runs for each event
+├── settings.py             .env values and the suggestions
+├── api/                    the backend
+│   ├── models.py           its contract: Turn, Finding, Source, Thread…, with facts as properties
+│   └── client.py           the HTTP calls, the two errors, and the one shared client (`agrivibe`)
+├── handlers/               what each event does
+│   ├── conversations.py    opening the page, opening, starting and deleting conversations
+│   └── chat.py             asking and answering, and the turn log
+├── presenters/             backend data → what each component shows (Markdown, never HTML)
+│   ├── messages.py         turns as chat messages: the trace, the answer, the sources
+│   ├── evidence.py         how evidence reads: tool names, citations, numbers, statuses
+│   └── page.py             the header, greeting, farmer, offline alert, thread list
+├── theme/
+│   ├── theme.py            shadcn/ui's neutral palette as a Gradio theme
+│   ├── style.css           layout and a few finishing touches
+│   └── agrivibe.svg        AgriVibe's avatar
+└── tests/                  one file per module; no backend and no keys needed
 ```
 
-### The design system (`ui/`)
+Imports run one way: `app → handlers → api + presenters`. Nothing imports `app`, and only
+`api/client.py` makes HTTP calls.
 
-It is built in three layers, so a colour is defined once and every piece follows light and dark mode:
-
-1. **Theme.** `gr.themes.Base(...).set(...)` sets Gradio's own variables to shadcn's neutral palette
-   and the Geist font.
-2. **Tokens.** shadcn's names point at those variables: `--background: var(--body-background-fill)`,
-   `--muted-foreground: var(--body-text-color-subdued)`, `--border`, `--primary`, … All other CSS uses
-   only these names. Status colours come from the theme's hues (`--success` is emerald,
-   `--warning` amber), and their soft versions are mixed with `color-mix()`, so dark mode needs no
-   rules of its own.
-3. **Primitives and components.** `primitives.py` renders shadcn's primitives as HTML with the
-   same variants (`button(variant="outline", size="sm")`, `badge(variant="warning")`). `components.py`
-   turns the interactive pieces into Gradio components by subclassing `gr.HTML`, Gradio 6's
-   custom HTML components:
-
-```python
-class ThreadList(Component):
-    EVENTS = ("open", "remove")     # Python can listen: threads.open(fn), threads.remove(fn)
-    CSS = ".history-item { … }"     # scoped to this component by Gradio
-```
-
-Every component works the same way. Python renders the markup and escapes backend text; the
-template is just `${value}`. Clicking an element with `data-event="open" data-id="t1"` fires the
-`open` event, and the handler reads `event.id` from `gr.EventData`. The template stays `${value}`
-because Gradio evaluates templates as JavaScript template strings, so text from the backend must
-never become part of a template.
-
-- **`client.py`** copies only the fields of the backend's contract that the UI reads
-  (`src/agrivibe/models/` in agrivibe-be). A field the backend adds later is ignored. A 404
-  becomes `ConversationNotFound`, so the page can start fresh when a conversation was deleted
-  in another tab.
-- **Two events per question.** `ask` shows the question and a thinking message at once, without the
-  queue; `.success(answer)` then waits for the backend. Gradio's own progress overlay is turned off
-  (`show_progress="hidden"`) because the thinking message does that job.
+- **`api/models.py`** copies only the fields of the backend's contract that the UI reads
+  (`src/agrivibe/models/` in agrivibe-be). A field the backend adds later is ignored. Facts about
+  the data are properties (`turn.field_id`, `turn.sources`, `finding.ok`, `finding.covered`); how
+  they read on the page is the presenters' job.
+- **`api/client.py`** turns every failure into one of two errors with a message a farmer can read.
+  A 404 becomes `ConversationNotFound`, so the page can start fresh when a conversation was deleted
+  in another tab. Handlers call `client.agrivibe` when they run, so tests swap it for a fake.
+- **The presenters return Markdown, never HTML.** `gr.Chatbot` sanitises any HTML inside a message
+  (`sanitize_html=True`, its default), so text from the agents and documents is safe to show.
+- **Two events per question.** `ask` shows the question and a pending thought at once, without the
+  queue; `.success(answer)` then waits for the backend. Gradio's progress overlay is turned off
+  (`show_progress="hidden"`) because the pending thought does that job.
 - **State.** `thread_id` lives in `gr.BrowserState` (survives a refresh); the open conversation's
-  turns live in `gr.State`, and the page is re-rendered from them after every change.
-- **Gradio 6 takes the theme and CSS in `launch()`**, passed as `demo.launch(**ui.LAUNCH)`.
+  turns live in `gr.State`, and the chat is rebuilt from them after every change.
+- **The look is mostly theme.** `gr.themes.Base(...).set(...)` sets Gradio's own variables, for
+  light and dark, so every stock component follows. `theme/style.css` (about 30 rules) does layout
+  and a few finishing touches. It names our own `elem_classes` (`.app-*`) and a handful of Gradio's
+  semantic classes (`.message.bot`, `.example`, `.icon-button`), never its generated `svelte-*` ones. Gradio 6 takes the theme and CSS in `launch()`, passed as
+  `demo.launch(**LAUNCH)`, which loads the theme and `css_paths=[style.css]`.
+- **An earlier version** built shadcn-style components on `gr.HTML` (custom templates, scoped CSS,
+  JavaScript events). It looks closer to shadcn's template but takes twice the code. It is kept at
+  the git tag `ui-custom-components`.
 
 ## Try the demo fields
 

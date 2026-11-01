@@ -1,0 +1,43 @@
+/* AgriVibe's layout and a few finishing touches, on top of the theme in theme.py.
+
+   Rules on .app-* name our own elem_classes; the rest name Gradio's semantic classes
+   (.message.bot, .example), never its generated svelte-* ones. Gradio puts elem_classes on a
+   component's outer .block and on its inner element too, so rules that draw a border or padding
+   name the block: .block.app-header. Gradio drops a declaration that spans two lines, so each
+   one stays on a single line. */
+
+footer { display: none !important; }
+
+/* Sidebar: a faint tint and a hairline edge, mixed from the theme so it works light and dark. */
+.app-sidebar { background: color-mix(in srgb, var(--body-text-color) 3%, var(--body-background-fill)) !important;
+  border-right: 1px solid var(--border-color-primary); }
+.app-threads label { width: 100%; }
+.app-threads input[type="radio"] { display: none; }
+.app-threads label span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.block.app-farmer { margin-top: auto; padding-top: 0.75rem; border-top: 1px solid var(--border-color-primary); }
+.app-farmer p { font-size: 0.8125rem; }
+
+/* The chat column: one readable width, a header line, the chat, then the message box. */
+.app-main { max-width: 50rem; width: 100%; margin: 0 auto; padding: 0 1.5rem 1rem; }
+.block.app-header { padding: 1rem 0 0.75rem; border-bottom: 1px solid var(--border-color-primary); }
+.app-header p { margin: 0; font-size: 0.8125rem; line-height: 1.5; color: var(--body-text-color-subdued); }
+.app-header strong { font-size: 0.9375rem; font-weight: 600; color: var(--body-text-color); }
+
+/* Messages: AgriVibe's replies sit on the page, the farmer's are a soft pill, copy buttons stay quiet. */
+.app-chat .message.bot { border: 0; box-shadow: none; padding-left: 0; padding-right: 0; }
+.app-chat .message ul { list-style: disc; }
+.app-chat .message.user { border: 0; border-radius: 1.125rem; padding: 0.5rem 1rem; }
+.app-chat .icon-button { --border-color: transparent; --bg-color: transparent; opacity: 0.6; }
+.app-chat .icon-button-wrapper { border: 0; background: transparent; box-shadow: none; }
+.app-chat .icon-button:hover { opacity: 1; }
+.app-chat .placeholder { text-align: center; }
+.app-chat .example { border: 1px solid var(--border-color-primary); }
+.app-chat .example:hover { background: color-mix(in srgb, var(--body-text-color) 4%, transparent); }
+
+/* The message box: a rounded card with a solid round send button, as in shadcn's chat template. */
+.block.app-composer { border: 1px solid var(--border-color-primary) !important; border-radius: 1rem !important;
+  padding: 0.5rem 0.5rem 0.5rem 0.75rem !important; box-shadow: 0 1px 2px rgb(0 0 0 / 0.05); }
+.block.app-composer:focus-within { box-shadow: 0 0 0 3px color-mix(in srgb, var(--body-text-color) 12%, transparent); }
+.app-main .form { background: transparent; }  /* Gradio's grey form wrapper, peeking at the card's corners */
+.app-composer textarea { font-size: 0.875rem; }
+.app-composer button { background: var(--button-primary-background-fill); color: var(--button-primary-text-color); }
