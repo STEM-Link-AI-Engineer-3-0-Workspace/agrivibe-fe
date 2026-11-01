@@ -1,0 +1,27 @@
+[project]
+name = "agrivibe-fe"
+version = "0.1.0"
+description = "The AgriVibe Gradio frontend. Talks to the backend over HTTP only."
+requires-python = ">=3.12"
+dependencies = [
+    "gradio>=6.31.0",
+    "httpx>=0.28.1",
+    "markdown-it-py>=4.2.0",
+    "python-dotenv>=1.2.4",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.2.0",
+]
+
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[tool.ruff]
+line-length = 120
+extend-exclude = ["*.pyi"]  # Gradio writes a .pyi of event signatures beside custom components
