@@ -13,8 +13,8 @@ import settings
 from api import client
 from api.client import BackendUnavailable, ConversationNotFound
 from api.models import Turn
+from contracts import messages
 from handlers.conversations import header_for, thread_list
-from presenters import messages
 
 # One JSON line per chat turn, so a turn can be found and read in the terminal.
 logger = logging.getLogger("agrivibe.ui")
@@ -41,6 +41,7 @@ def suggest(turns: list[Turn], event: gr.SelectData):
 
 def answer(question: str, thread_id: str | None, turns: list[Turn]):
     """Sends the question to POST /chat and fills the chat, the header and the sidebar."""
+    thread_id = thread_id or None  # the hidden textbox holds "" for a new conversation
     try:
         reply = client.agrivibe.chat(question, thread_id)
     except ConversationNotFound as error:

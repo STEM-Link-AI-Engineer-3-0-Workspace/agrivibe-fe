@@ -60,12 +60,15 @@ save. Both commands apply the same theme.
 
 ## What the page does
 
-Everything on the page is a stock Gradio component, themed. There is no custom HTML or JavaScript.
+Everything on the page is a stock Gradio component, themed. There is no custom HTML; the only
+JavaScript keeps the URL in step with the open conversation and confirms a delete.
 
 - **Conversations in the sidebar** (`gr.Sidebar`, `gr.Radio`). Every conversation is saved by the
   backend in Postgres; click one to reopen it. **Delete conversation** asks to confirm first.
-- **A refresh keeps your place.** The open conversation's id is kept in the browser
-  (`gr.BrowserState`), so reloading the page reopens it.
+- **The URL names the open conversation** (`/?thread=<id>`). It is the only place the id is
+  kept, so a refresh, a bookmark or a shared link reopens the conversation, and Back and Forward
+  step between conversations. `on_load` reads it with `gr.Request`; a few lines of JS in `app.py`
+  write it whenever the conversation changes.
 - **Each answer carries its own evidence**, as collapsible "thoughts" in the `gr.Chatbot`
   (a message with `metadata`):
   - *Worked with 4 agents (45s)* opens into one nested thought per step the orchestrator took:
@@ -99,7 +102,7 @@ agrivibe-fe/
 ├── handlers/               what each event does
 │   ├── conversations.py    opening the page, opening, starting and deleting conversations
 │   └── chat.py             asking and answering, and the turn log
-├── presenters/             backend data → what each component shows (Markdown, never HTML)
+├── contracts/              backend data → what each component shows (Markdown, never HTML)
 │   ├── messages.py         turns as chat messages: the trace, the answer, the sources
 │   ├── evidence.py         how evidence reads: tool names, citations, numbers, statuses
 │   └── page.py             the header, greeting, farmer, offline alert, thread list
@@ -110,7 +113,7 @@ agrivibe-fe/
 └── tests/                  one file per module; no backend and no keys needed
 ```
 
-Imports run one way: `app → handlers → api + presenters`. Nothing imports `app`, and only
+Imports run one way: `app → handlers → api + contracts`. Nothing imports `app`, and only
 `api/client.py` makes HTTP calls.
 
 - **`api/models.py`** copies only the fields of the backend's contract that the UI reads
@@ -125,8 +128,10 @@ Imports run one way: `app → handlers → api + presenters`. Nothing imports `a
 - **Two events per question.** `ask` shows the question and a pending thought at once, without the
   queue; `.success(answer)` then waits for the backend. Gradio's progress overlay is turned off
   (`show_progress="hidden"`) because the pending thought does that job.
-- **State.** `thread_id` lives in `gr.BrowserState` (survives a refresh); the open conversation's
-  turns live in `gr.State`, and the chat is rebuilt from them after every change.
+- **State.** The URL holds the open conversation's id; in the page, `thread_id` is a hidden
+  `gr.Textbox`, not `gr.State`, because a `gr.State` never reaches the browser and the URL-writing
+  JS must read it. The open conversation's turns live in `gr.State`, and the chat is rebuilt from
+  them after every change.
 - **The look is mostly theme.** `gr.themes.Base(...).set(...)` sets Gradio's own variables, for
   light and dark, so every stock component follows. `theme/style.css` (about 30 rules) does layout
   and a few finishing touches. It names our own `elem_classes` (`.app-*`) and a handful of Gradio's

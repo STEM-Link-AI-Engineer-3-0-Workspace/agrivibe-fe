@@ -1,5 +1,5 @@
 from api.models import Finding, Source, Turn
-from presenters import messages
+from contracts import messages
 
 TURN = Turn(
     message="Is my field stressed?",

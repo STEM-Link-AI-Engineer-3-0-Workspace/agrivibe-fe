@@ -10,7 +10,7 @@ import settings
 from api import client
 from api.client import BackendUnavailable, ConversationNotFound
 from api.models import Turn
-from presenters import messages, page
+from contracts import messages, page
 
 
 def header_for(turns: list[Turn], online: bool | None = True) -> str:
@@ -38,19 +38,21 @@ def fresh():
     return [], None, [], header_for([]), thread_list(None)
 
 
-def on_load(saved_thread_id: str | None):
-    """Fills the page when it opens, reopening the conversation that was open before a refresh.
+def on_load(request: gr.Request):
+    """Fills the page when it opens, with the conversation the URL names (`?thread=<id>`).
 
-    Returns the offline alert first, then the five conversation values.
+    The URL is the only place the open conversation is kept, so a refresh, a bookmark or a shared
+    link all reopen it. Returns the offline alert first, then the five conversation values.
     """
+    url_thread_id = request.query_params.get("thread") or None
     if not client.agrivibe.is_up():
         offline = gr.Markdown(page.offline_alert(settings.API), visible=True)
-        # Keep the saved thread_id: once the backend is back, a reload reopens the conversation.
-        return offline, [], gr.skip(), [], header_for([], online=False), gr.skip()
-    if saved_thread_id:
+        # Keep the URL's thread: once the backend is back, a reload reopens the conversation.
+        return offline, [], url_thread_id, [], header_for([], online=False), gr.skip()
+    if url_thread_id:
         try:
-            return gr.Markdown(visible=False), *opened(saved_thread_id)
-        except BackendUnavailable:  # deleted elsewhere, or gone: start fresh
+            return gr.Markdown(visible=False), *opened(url_thread_id)
+        except BackendUnavailable:  # deleted, or never existed: start fresh, and the URL drops it
             pass
     return gr.Markdown(visible=False), *fresh()
 

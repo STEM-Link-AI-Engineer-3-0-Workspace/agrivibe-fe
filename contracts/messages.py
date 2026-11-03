@@ -5,7 +5,7 @@ Everything here is Markdown, never HTML. gr.Chatbot sanitises any HTML inside a 
 """
 
 from api.models import Turn
-from presenters.evidence import FINDING_OF, FINDING_TITLES, STEPS, cite, evidence, status
+from contracts.evidence import FINDING_OF, FINDING_TITLES, STEPS, cite, evidence, status
 
 
 def thought(title: str, content: str = "", **metadata) -> dict:

@@ -1,3 +1,5 @@
+from types import SimpleNamespace
+
 import gradio as gr
 import pytest
 
@@ -59,6 +61,11 @@ REPLY = ChatReply(**TURN.model_dump(), thread_id="thread-1")
 SUMMARY = ThreadSummary(thread_id="thread-1", title="Should I spray?", updated_at=UPDATED, turns=1)
 FOLLOW_UP = Turn(message="Thanks", answer="You're welcome.", tools_called=[], seconds=2.0)
 THREAD = Thread(**SUMMARY.model_dump(), history=[TURN, FOLLOW_UP])
+
+
+def opening(url_thread_id=None):
+    """A stand-in for the gr.Request of a page opened at /?thread=<id>."""
+    return SimpleNamespace(query_params={"thread": url_thread_id} if url_thread_id else {})
 
 
 def text(messages):
@@ -139,30 +146,38 @@ def test_opening_a_conversation_restores_it(fake):
     assert "SL-PADDY-SAT-FAIL" in header  # the last field saved, even though the last turn saved none
 
 
-def test_a_refresh_reopens_the_saved_conversation(fake):
+def test_the_url_reopens_its_conversation(fake):
     fake(thread=THREAD, threads=[SUMMARY])
 
-    alert, _, thread_id, turns, header, threads = conversations.on_load("thread-1")
+    alert, _, thread_id, turns, header, threads = conversations.on_load(opening("thread-1"))
 
     assert alert.visible is False and thread_id == "thread-1" and len(turns) == 2
     assert "Backend online" in header and threads.value == "thread-1"
 
 
-def test_a_saved_conversation_that_is_gone_starts_fresh(fake):
+def test_a_url_conversation_that_is_gone_starts_fresh(fake):
     fake(thread=None, threads=[])
 
-    _, messages, thread_id, turns, *_ = conversations.on_load("deleted-thread")
+    _, messages, thread_id, turns, *_ = conversations.on_load(opening("deleted-thread"))
 
     assert messages == [] and thread_id is None and turns == []
 
 
-def test_an_offline_backend_shows_the_alert_and_keeps_the_saved_conversation(fake):
+def test_a_plain_url_opens_a_new_conversation(fake):
+    fake(threads=[SUMMARY])
+
+    _, messages, thread_id, turns, *_ = conversations.on_load(opening())
+
+    assert messages == [] and thread_id is None and turns == []
+
+
+def test_an_offline_backend_shows_the_alert_and_keeps_the_url_conversation(fake):
     fake(error=BackendUnavailable("down"))
 
-    alert, _, thread_id, _, header, _ = conversations.on_load("thread-1")
+    alert, _, thread_id, _, header, _ = conversations.on_load(opening("thread-1"))
 
     assert alert.visible is True and "Backend offline" in header
-    assert thread_id is not None  # gr.skip(): the browser keeps its saved thread for the next reload
+    assert thread_id == "thread-1"  # the URL keeps it, so a reload reopens it once the backend is back
 
 
 def test_deleting_clears_the_conversation(fake):

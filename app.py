@@ -8,7 +8,7 @@ backend first (see README.md), then, in this repo:
     settings.py    .env values and the suggestions
     api/           the backend's contract (models) and the HTTP client
     handlers/      what each event does
-    presenters/    backend data → what each component shows
+    contracts/     backend data → what each component shows
     theme/         the theme, the CSS and the avatar
 """
 
@@ -17,15 +17,39 @@ import logging
 import gradio as gr
 
 import settings
+from contracts import page
 from handlers import chat as chat_handlers
 from handlers import conversations
-from presenters import page
 from theme.theme import AVATAR, LAUNCH
 
 logging.basicConfig(format="%(levelname)s:     %(name)s: %(message)s")
 
+
+def write_url(method: str) -> str:
+    """Browser JS that puts the thread id in the URL (`?thread=<id>`), or takes it out for a new chat.
+
+    `replaceState` runs once, when the page has opened, and marks it opened. `pushState` waits
+    for that mark: otherwise opening a deleted thread would push `/` over it, and Back would land
+    on the dead link again.
+    """
+    wait = "if (!window.pageOpened) return;" if method == "pushState" else ""
+    return f"""(id) => {{
+        {wait}
+        window.pageOpened = true;
+        const url = new URL(location.href);
+        if ((url.searchParams.get("thread") ?? "") === (id ?? "")) return;
+        id ? url.searchParams.set("thread", id) : url.searchParams.delete("thread");
+        history.{method}(null, "", url);
+    }}"""
+
+
+# Back and Forward change the URL without telling Gradio, so reload: on_load reads the URL again.
+RELOAD_ON_BACK = "() => { window.addEventListener('popstate', () => location.reload()); }"
+
 with gr.Blocks(title="AgriVibe", fill_height=True) as demo:
-    thread_id = gr.BrowserState(None, storage_key="agrivibe-thread")  # survives a refresh
+    # The open conversation's id. The URL is its source of truth; this copy is a hidden Textbox,
+    # not gr.State, because gr.State never reaches the browser, and the JS below needs to read it.
+    thread_id = gr.Textbox(visible=False)
     turns = gr.State([])  # the open conversation's turns
     question = gr.State("")  # the question being answered, kept while the textbox is cleared
 
@@ -67,19 +91,26 @@ with gr.Blocks(title="AgriVibe", fill_height=True) as demo:
         "show_progress": "hidden",  # the pending thought in the chat already shows the progress
     }
 
-    demo.load(conversations.on_load, inputs=thread_id, outputs=[alert, *conversation])
+    # Gradio's default overlay dims every output with "processing | 0.4s". Opening, starting and
+    # deleting a conversation take well under a second, so these events show nothing while they run.
+    quiet = {"show_progress": "hidden"}
+
+    # Opening the page settles the URL in place (a deleted thread drops out), adding no history.
+    demo.load(conversations.on_load, outputs=[alert, *conversation], **quiet).then(None, thread_id, js=write_url("replaceState"))
+    # Every later change of conversation is a new history entry, so Back returns to it.
+    thread_id.change(None, thread_id, js=write_url("pushState"))
     box.submit(chat_handlers.ask, [box, turns], [box, chat, question], queue=False).success(**answer_event)
     chat.example_select(chat_handlers.suggest, turns, [box, chat, question], queue=False).success(**answer_event)
-    new.click(conversations.fresh, outputs=conversation, queue=False)
-    chat.clear(conversations.fresh, outputs=conversation, queue=False)  # the chat's trash button: start fresh
-    threads.input(conversations.open_thread, threads, conversation)
+    new.click(conversations.fresh, outputs=conversation, queue=False, **quiet)
+    threads.input(conversations.open_thread, threads, conversation, **quiet)
     delete.click(
         conversations.delete_thread,
         thread_id,
         conversation,
         js="(id) => (id && confirm('Delete this conversation and its evidence?')) ? id : null",
+        **quiet,
     )
 
 
 if __name__ == "__main__":
-    demo.launch(**LAUNCH)  # reload mode (`uv run gradio app.py`) runs this too, so the theme applies in both
+    demo.launch(**LAUNCH, js=RELOAD_ON_BACK)  # reload mode (`uv run gradio app.py`) runs this too, so the theme applies in both

@@ -14,6 +14,9 @@ footer { display: none !important; }
 .app-threads label { width: 100%; }
 .app-threads input[type="radio"] { display: none; }
 .app-threads label span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Stretch the sidebar's column to full height, so the farmer's margin-top: auto pins it bottom left. */
+.app-sidebar .sidebar-content { flex: 1; display: flex; flex-direction: column; }
+.app-sidebar .sidebar-content > .column { flex: 1; }
 .block.app-farmer { margin-top: auto; padding-top: 0.75rem; border-top: 1px solid var(--border-color-primary); }
 .app-farmer p { font-size: 0.8125rem; }
 
@@ -30,6 +33,8 @@ footer { display: none !important; }
 .app-chat .icon-button { --border-color: transparent; --bg-color: transparent; opacity: 0.6; }
 .app-chat .icon-button-wrapper { border: 0; background: transparent; box-shadow: none; }
 .app-chat .icon-button:hover { opacity: 1; }
+/* The chat's own trash button: New chat and Delete conversation in the sidebar do its job. */
+.app-chat .icon-button-wrapper.top-panel { display: none; }
 .app-chat .placeholder { text-align: center; }
 .app-chat .example { border: 1px solid var(--border-color-primary); }
 .app-chat .example:hover { background: color-mix(in srgb, var(--body-text-color) 4%, transparent); }
