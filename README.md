@@ -14,7 +14,8 @@ browser ──▶ agrivibe-fe (Gradio, :7860) ──HTTP──▶ agrivibe-be (F
 Gradio calls the backend from Python on the server, not from the browser, so there is no CORS to
 set up. In that sense this app is a backend-for-frontend: a small server whose only job is the UI.
 
-Learning from this repo? The review pack for AIE 3.0 Level 6 Lesson 5 is in [`docs/`](docs/README.md).
+Learning from this repo? The review pack for AIE 3.0 Level 6 Lesson 5 is in [`docs/`](docs/README.md), and
+[online](https://stem-link-ai-engineer-3-0-workspace.github.io/agrivibe-fe/lessons/0001-gradio-api-full-stack.html).
 
 ## Setup
 

@@ -11,8 +11,10 @@ Gradio + API development for AgriVibe, from the session of 1 Nov 2026.
 
 ## Opening the lesson pack
 
-GitHub shows HTML as source, so download the file (or clone the repo) and open it in a browser.
-It needs no server. Fonts load from stemlink.online when you're online; offline it falls back to
+**Online:** <https://stem-link-ai-engineer-3-0-workspace.github.io/agrivibe-fe/lessons/0001-gradio-api-full-stack.html>
+(GitHub Pages serves this folder from `main`, so a push updates it within a minute or two.)
+
+**Offline:** download the file or clone the repo and open it in a browser. It needs no server. Fonts load from stemlink.online when you're online; offline it falls back to
 the system font. Progress through the quizzes is saved in your browser.
 
 The lessons describe the code in this repo and in
