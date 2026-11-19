@@ -56,8 +56,15 @@ with gr.Blocks(title="AgriVibe", fill_height=True) as demo:
     with gr.Sidebar(width=280, elem_classes="app-sidebar"):
         gr.Markdown("### AgriVibe")
         new = gr.Button("New chat", variant="primary", size="sm")
-        threads = gr.Radio(label="Conversations", choices=[], container=False, elem_classes="app-threads")
-        delete = gr.Button("Delete conversation", variant="stop", size="sm")
+        threads = gr.Radio(
+            label="Conversations", choices=[], container=False, elem_classes="app-threads",
+            visible=settings.BACKEND_MODE != "lesson2",
+        )
+        delete = gr.Button("Delete conversation", variant="stop", size="sm", visible=settings.BACKEND_MODE != "lesson2")
+        gr.Markdown(
+            "Lesson 2: chat history stays in this page until you reload. Backend memory is lost on task replacement.",
+            visible=settings.BACKEND_MODE == "lesson2",
+        )
         gr.Markdown(page.farmer(settings.FARMER_NAME, settings.FARMER_ID), elem_classes="app-farmer")
 
     with gr.Column(scale=1, elem_classes="app-main"):  # the chat column, centred at a readable width

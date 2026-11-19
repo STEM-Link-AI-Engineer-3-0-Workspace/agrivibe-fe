@@ -198,3 +198,13 @@ def test_cancelling_the_delete_does_nothing(fake):
 def test_the_chat_sanitises_html_from_the_backend():
     # The presenters emit Markdown only and rely on this for agent and document text.
     assert app.chat.sanitize_html is True
+
+
+def test_lesson2_answer_keeps_the_active_chat_without_a_saved_thread_list(fake, monkeypatch):
+    monkeypatch.setattr(conversations.settings, "BACKEND_MODE", "lesson2")
+    fake(reply=REPLY)
+
+    messages, thread_id, turns, _, threads = chat.answer("Should I spray?", None, [])
+
+    assert messages and thread_id == "thread-1" and turns == [REPLY]
+    assert threads.visible is False and threads.value is None

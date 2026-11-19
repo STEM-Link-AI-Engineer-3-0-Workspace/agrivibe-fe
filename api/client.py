@@ -1,6 +1,6 @@
 """The HTTP calls to the AgriVibe backend, with every failure turned into one readable error.
 
-The UI never tells the backend who the farmer is: the backend decides that on the server.
+The full-stack backend decides identity on the server. Explicit Lesson 2 mode sends a demo user id.
 """
 
 from typing import Any
@@ -28,7 +28,10 @@ class ConversationNotFound(BackendUnavailable):
 class AgriVibeClient:
     """Calls the AgriVibe backend over HTTP."""
 
-    def __init__(self, base_url: str, timeout: float = TIMEOUT_SECONDS, transport: httpx.BaseTransport | None = None):
+    def __init__(
+        self, base_url: str, timeout: float = TIMEOUT_SECONDS,
+        transport: httpx.BaseTransport | None = None, *, lesson2_user_id: str | None = None,
+    ):
         """Initializes the client.
 
         Args:
@@ -37,6 +40,7 @@ class AgriVibeClient:
             transport: Tests pass an httpx.MockTransport here instead of a real network.
         """
         self.http = httpx.Client(base_url=base_url, timeout=timeout, transport=transport)
+        self.lesson2_user_id = lesson2_user_id
 
     def is_up(self) -> bool:
         """Returns True when GET /health answers {"status": "ok"}."""
@@ -47,18 +51,27 @@ class AgriVibeClient:
 
     def chat(self, message: str, thread_id: str | None = None) -> ChatReply:
         """Sends one message to the orchestrator. None starts a new conversation."""
-        return read(ChatReply, self._call("POST", "/chat", json={"message": message, "thread_id": thread_id}))
+        body = {"message": message, "thread_id": thread_id}
+        if self.lesson2_user_id is not None:
+            body["user_id"] = self.lesson2_user_id
+        return read(ChatReply, self._call("POST", "/chat", json=body))
 
     def list_threads(self) -> list[ThreadSummary]:
         """The farmer's conversations, the most recently used first."""
+        if self.lesson2_user_id is not None:
+            return []  # The Session 2 backend has no saved-conversation endpoints.
         return read(list[ThreadSummary], self._call("GET", "/threads"))
 
     def get_thread(self, thread_id: str) -> Thread:
         """One conversation with every turn and its evidence."""
+        if self.lesson2_user_id is not None:
+            raise ConversationNotFound("Lesson 2 conversations cannot be reopened. Start a new one.")
         return read(Thread, self._call("GET", f"/threads/{thread_id}"))
 
     def delete_thread(self, thread_id: str) -> None:
         """Deletes one conversation."""
+        if self.lesson2_user_id is not None:
+            raise BackendUnavailable("The Lesson 2 backend does not support deleting conversations.")
         self._call("DELETE", f"/threads/{thread_id}")
 
     def _call(self, method: str, path: str, **kwargs) -> Any:
@@ -81,7 +94,19 @@ class AgriVibeClient:
             if status == 404:
                 raise ConversationNotFound("That conversation no longer exists. Start a new one.") from error
             if status == 422:
-                raise BackendUnavailable("That message could not be sent. Keep it under 2000 characters.") from error
+                try:
+                    payload = error.response.json()
+                    detail = payload.get("detail", []) if isinstance(payload, dict) else []
+                except ValueError:
+                    detail = []
+                if isinstance(detail, list) and any(
+                    isinstance(item, dict) and item.get("loc") == ["body", "message"]
+                    and item.get("type") == "string_too_long" for item in detail
+                ):
+                    raise BackendUnavailable("That message could not be sent. Keep it under 2000 characters.") from error
+                raise BackendUnavailable(
+                    "The app and advisory service disagree on the request format. Please contact the instructor."
+                ) from error
             raise BackendUnavailable(
                 f"AgriVibe's advisory service had a problem (HTTP {status}). Try again in a moment."
             ) from error
@@ -105,4 +130,7 @@ def read(shape: Any, data: Any) -> Any:
 
 # The one client the page uses. Handlers look it up as `client.agrivibe` when they run, so tests
 # can swap it for a fake.
-agrivibe = AgriVibeClient(settings.API, timeout=settings.TIMEOUT)
+agrivibe = AgriVibeClient(
+    settings.API, timeout=settings.TIMEOUT,
+    lesson2_user_id=settings.LESSON2_USER_ID if settings.BACKEND_MODE == "lesson2" else None,
+)

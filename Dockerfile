@@ -21,9 +21,10 @@ COPY handlers ./handlers
 COPY theme ./theme
 # GRADIO_SERVER_NAME: listen on every interface, not only 127.0.0.1, so the load balancer can reach it.
 # AGRIVIBE_API: the backend. On ECS both containers share the task's localhost.
+# This classroom branch targets Session 2's in-memory API; override the mode for the full-stack API.
 ENV PATH=/app/.venv/bin:$PATH PYTHONUNBUFFERED=1 HOME=/tmp \
     GRADIO_SERVER_NAME=0.0.0.0 GRADIO_SERVER_PORT=7860 GRADIO_ANALYTICS_ENABLED=False \
-    AGRIVIBE_API=http://127.0.0.1:8000
+    AGRIVIBE_API=http://127.0.0.1:8000 AGRIVIBE_BACKEND_MODE=lesson2
 USER app
 EXPOSE 7860
 HEALTHCHECK --interval=10s --timeout=3s --start-period=20s --retries=3 \
