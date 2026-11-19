@@ -56,6 +56,10 @@ class AgriVibeClient:
             body["user_id"] = self.lesson2_user_id
         return read(ChatReply, self._call("POST", "/chat", json=body))
 
+    def feedback(self, trace_id: str, positive: bool) -> None:
+        """Sends the farmer's 👍/👎 on one reply. The backend stores it as a Langfuse score (Lesson 3)."""
+        self._call("POST", "/feedback", json={"trace_id": trace_id, "positive": positive})
+
     def list_threads(self) -> list[ThreadSummary]:
         """The farmer's conversations, the most recently used first."""
         if self.lesson2_user_id is not None:

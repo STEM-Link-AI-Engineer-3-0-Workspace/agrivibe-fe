@@ -75,7 +75,7 @@ with gr.Blocks(title="AgriVibe", fill_height=True) as demo:
             placeholder=page.greeting(settings.FARMER_NAME),
             examples=[{"text": suggestion} for suggestion in settings.SUGGESTIONS],
             buttons=["copy"],
-            feedback_options=None,
+            feedback_options=("Like", "Dislike"),  # 👍/👎 → Langfuse user_feedback score (Lesson 3)
             avatar_images=(None, AVATAR),
             scale=1,  # with fill_height, the chat takes the height the other rows leave
             elem_classes="app-chat",
@@ -108,6 +108,7 @@ with gr.Blocks(title="AgriVibe", fill_height=True) as demo:
     thread_id.change(None, thread_id, js=write_url("pushState"))
     box.submit(chat_handlers.ask, [box, turns], [box, chat, question], queue=False).success(**answer_event)
     chat.example_select(chat_handlers.suggest, turns, [box, chat, question], queue=False).success(**answer_event)
+    chat.like(chat_handlers.feedback, turns, None, queue=False)
     new.click(conversations.fresh, outputs=conversation, queue=False, **quiet)
     threads.input(conversations.open_thread, threads, conversation, **quiet)
     delete.click(

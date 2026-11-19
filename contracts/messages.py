@@ -58,6 +58,17 @@ def turn_messages(turn: Turn, n: int) -> list[dict]:
     return [{"role": "user", "content": turn.message}, *trace(turn, n), answer, *source_list(turn)]
 
 
+def answer_turns(turns: list[Turn]) -> dict[int, int]:
+    """Which turn each answer message belongs to, by its index in chat_messages(turns). For 👍/👎."""
+    index, found = 0, {}
+    for n, turn in enumerate(turns):
+        for message in turn_messages(turn, n):
+            if message["role"] == "assistant" and not message.get("metadata"):
+                found.setdefault(index, n)  # the first plain assistant message of a turn is its answer
+            index += 1
+    return found
+
+
 def chat_messages(turns: list[Turn], *, pending: str | None = None, failed: tuple[str, str] | None = None) -> list[dict]:
     """The conversation for gr.Chatbot, plus a question still being answered or one that failed."""
     messages = [message for n, turn in enumerate(turns) for message in turn_messages(turn, n)]
