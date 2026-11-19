@@ -61,3 +61,16 @@ def answer(question: str, thread_id: str | None, turns: list[Turn]):
     )
     turns = turns + [reply]
     return messages.chat_messages(turns), reply.thread_id, turns, header_for(turns), thread_list(reply.thread_id)
+
+
+def feedback(turns: list[Turn], event: gr.LikeData) -> None:
+    """👍/👎 under an answer: send it to the backend for that turn's Langfuse trace (Lesson 3)."""
+    n = messages.answer_turns(turns).get(event.index if isinstance(event.index, int) else event.index[0])
+    if n is None or event.liked is None or not turns[n].trace_id:
+        return  # a thought or a source, an undone vote, or a reply without tracing
+    try:
+        client.agrivibe.feedback(turns[n].trace_id, positive=bool(event.liked))
+    except BackendUnavailable as error:
+        raise gr.Error(str(error), duration=4) from error
+    log_turn(thread_id=None, status="feedback", trace_id=turns[n].trace_id, positive=bool(event.liked))
+    gr.Info("Thanks, your feedback was recorded.", duration=2)

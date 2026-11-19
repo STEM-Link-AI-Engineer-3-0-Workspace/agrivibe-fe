@@ -51,6 +51,7 @@ class Turn(BaseModel):
     requirements: dict[str, str] | None = None
     findings: dict[str, Finding] = {}
     seconds: float = 0.0
+    trace_id: str | None = None  # the Langfuse trace of this turn, for 👍/👎 (Lesson 3)
 
     @property
     def field_id(self) -> str | None:

@@ -19,6 +19,25 @@ Learning from this repo? The review pack for AIE 3.0 Level 6 Lesson 5 is in [`do
 
 ## Setup
 
+### Session 2 backend compatibility
+
+The Session 2 backend requires `user_id` in `POST /chat` and has no saved-conversation endpoints.
+Use `AGRIVIBE_BACKEND_MODE=lesson2` with that backend. It sends the configured demo identity
+(`AGRIVIBE_LESSON2_USER_ID`, default `farmer-001`), keeps the active thread for follow-up messages,
+and hides saved-conversation controls. Reloading the page starts a fresh conversation. This is
+a classroom identity, not authentication. The Dockerfile on this classroom branch defaults to
+this mode; the usual local-development default is `fullstack`, with identity decided by the backend.
+
+For a local frontend against the Lesson 2 backend:
+
+```bash
+AGRIVIBE_BACKEND_MODE=lesson2 uv run python app.py
+```
+
+When deploying this image with the newer full-stack backend, explicitly set
+`AGRIVIBE_BACKEND_MODE=fullstack`. The Postgres and saved-conversation descriptions below apply to
+that full-stack backend. A missing `user_id` is a request-format mismatch, not a message-length error.
+
 ```bash
 curl -LsSf https://astral.sh/uv/install.sh | sh   # skip if you already have uv
 uv sync

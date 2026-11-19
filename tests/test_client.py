@@ -85,11 +85,17 @@ def test_a_missing_conversation_has_its_own_error():
         (lambda request: (_ for _ in ()).throw(httpx.ReadTimeout("slow", request=request)), "took too long"),
         (lambda request: (_ for _ in ()).throw(httpx.ConnectError("refused", request=request)), "not reachable"),
         (lambda request: httpx.Response(500, text="Internal Server Error"), "HTTP 500"),
-        (lambda request: httpx.Response(422, json={"detail": []}), "2000 characters"),
+        (lambda request: httpx.Response(422, json={"detail": [
+            {"loc": ["body", "message"], "type": "string_too_long"},
+        ]}), "2000 characters"),
+        (lambda request: httpx.Response(422, json={"detail": [
+            {"loc": ["body", "user_id"], "type": "missing"},
+        ]}), "request format"),
+        (lambda request: httpx.Response(422, text="invalid request"), "request format"),
         (lambda request: httpx.Response(200, text="<html>not json</html>"), "could not read"),
         (lambda request: httpx.Response(200, json={"answer": "no thread id"}), "could not read"),
     ],
-    ids=["timeout", "down", "server-error", "too-long", "not-json", "wrong-shape"],
+    ids=["timeout", "down", "server-error", "too-long", "missing-user", "invalid-422", "not-json", "wrong-shape"],
 )
 def test_every_failure_becomes_a_message_for_the_farmer(handler, expected):
     with pytest.raises(BackendUnavailable, match=expected):
@@ -99,3 +105,36 @@ def test_every_failure_becomes_a_message_for_the_farmer(handler, expected):
 def test_is_up_reads_the_health_check():
     assert client_answering(lambda request: httpx.Response(200, json={"status": "ok"})).is_up()
     assert not client_answering(lambda request: httpx.Response(503, text="down")).is_up()
+
+
+def test_lesson2_chat_supplies_demo_identity_and_keeps_the_thread():
+    bodies = []
+
+    def handler(request):
+        bodies.append(json.loads(request.read()))
+        return httpx.Response(200, json={**TURN, "thread_id": "lesson-thread"})
+
+    client = AgriVibeClient(
+        "http://agrivibe.test", transport=httpx.MockTransport(handler), lesson2_user_id="farmer-001",
+    )
+    reply = client.chat("Is my field stressed?")
+    client.chat("Has it rained?", reply.thread_id)
+
+    assert bodies == [
+        {"message": "Is my field stressed?", "user_id": "farmer-001", "thread_id": None},
+        {"message": "Has it rained?", "user_id": "farmer-001", "thread_id": "lesson-thread"},
+    ]
+
+
+def test_lesson2_does_not_call_missing_saved_conversation_routes():
+    def handler(request):
+        pytest.fail(f"Unsupported request: {request.method} {request.url.path}")
+
+    client = AgriVibeClient(
+        "http://agrivibe.test", transport=httpx.MockTransport(handler), lesson2_user_id="farmer-001",
+    )
+    assert client.list_threads() == []
+    with pytest.raises(ConversationNotFound, match="cannot be reopened"):
+        client.get_thread("old-thread")
+    with pytest.raises(BackendUnavailable, match="does not support deleting"):
+        client.delete_thread("old-thread")

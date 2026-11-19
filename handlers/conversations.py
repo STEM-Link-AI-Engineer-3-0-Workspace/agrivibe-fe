@@ -21,6 +21,8 @@ def header_for(turns: list[Turn], online: bool | None = True) -> str:
 
 def thread_list(selected: str | None):
     """The sidebar's conversations, freshly loaded, with one selected. Unchanged if the backend is down."""
+    if settings.BACKEND_MODE == "lesson2":
+        return gr.Radio(choices=[], value=None, visible=False)
     try:
         return gr.Radio(choices=page.thread_choices(client.agrivibe.list_threads()), value=selected)
     except BackendUnavailable:

@@ -7,6 +7,7 @@ import app
 from api import client
 from api.client import BackendUnavailable, ConversationNotFound
 from api.models import ChatReply, Finding, Source, Thread, ThreadSummary, Turn
+from contracts import messages
 from handlers import chat, conversations
 
 UPDATED = "2026-11-01T10:00:24Z"
@@ -38,6 +39,9 @@ class FakeClient:
 
     def delete_thread(self, thread_id):
         self.calls.append(("delete_thread", thread_id))
+
+    def feedback(self, trace_id, positive):
+        self.calls.append(("feedback", trace_id, positive))
 
 
 TURN = Turn(
@@ -198,3 +202,42 @@ def test_cancelling_the_delete_does_nothing(fake):
 def test_the_chat_sanitises_html_from_the_backend():
     # The presenters emit Markdown only and rely on this for agent and document text.
     assert app.chat.sanitize_html is True
+
+
+def test_lesson2_answer_keeps_the_active_chat_without_a_saved_thread_list(fake, monkeypatch):
+    monkeypatch.setattr(conversations.settings, "BACKEND_MODE", "lesson2")
+    fake(reply=REPLY)
+
+    messages, thread_id, turns, _, threads = chat.answer("Should I spray?", None, [])
+
+    assert messages and thread_id == "thread-1" and turns == [REPLY]
+    assert threads.visible is False and threads.value is None
+
+
+# 👍/👎 (Lesson 3)
+
+
+def like(index, liked=True):
+    return SimpleNamespace(index=index, liked=liked)
+
+
+def test_a_thumbs_up_on_an_answer_is_sent_for_that_turns_trace(fake, monkeypatch):
+    monkeypatch.setattr(gr, "Info", lambda *a, **k: None)
+    fake_client = fake()
+    turns = [TURN.model_copy(update={"trace_id": "t-1"}), FOLLOW_UP.model_copy(update={"trace_id": "t-2"})]
+    shown = messages.chat_messages(turns)
+    answers = [i for i, m in enumerate(shown) if m["role"] == "assistant" and not m.get("metadata")]
+
+    chat.feedback(turns, like(answers[-1], liked=False))
+
+    assert fake_client.calls == [("feedback", "t-2", False)]
+
+
+def test_feedback_on_a_thought_or_an_untraced_reply_sends_nothing(fake):
+    fake_client = fake()
+    turns = [TURN]  # no trace_id: the backend runs without Langfuse
+
+    chat.feedback(turns, like(1))
+    chat.feedback(turns, like(0))
+
+    assert fake_client.calls == []
